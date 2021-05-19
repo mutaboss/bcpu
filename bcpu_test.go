@@ -20,7 +20,7 @@ func TestBcpuRun(t *testing.T) {
     if err := cpu.Run(); err != nil {
         t.Error(fmt.Sprintf("Execution error: %s.", err))
     }
-    if cpu.ProgramCounter() != ProgramStart + InstructionWidth {
+    if cpu.ProgramCounter() != ProgramStart + 1 {
         t.Error(fmt.Sprintf("Program Counter did not advance (is %d).", cpu.ProgramCounter()))
     }
 }
@@ -28,11 +28,11 @@ func TestBcpuRun(t *testing.T) {
 func TestBcpuNoop(t *testing.T) {
     var cpu *Bcpu = NewBcpu()
     cpu.SetMemory(ProgramStart, OpNoop<<8)
-    cpu.SetMemory(ProgramStart+InstructionWidth, OpNoop<<8)
+    cpu.SetMemory(ProgramStart+1, OpNoop<<8)
     if err := cpu.Run(); err != nil {
         t.Error(fmt.Sprintf("Execution error: %s.", err))
     }
-    exppc := ProgramStart + 3*InstructionWidth
+    exppc := ProgramStart + 3
     if cpu.ProgramCounter() != exppc {
         t.Error(fmt.Sprintf("Program Counter should be %d, is %d.", exppc, cpu.ProgramCounter()))
     }
@@ -88,3 +88,11 @@ func TestBcpuOpSetreg(t *testing.T) {
     testRegisterSet(t, cpu, 1, 256)
     testRegisterSet(t, cpu, RegisterCount-1, 256)
 }
+
+// func TestBcpuEncodeOpcode(t *testing.T) {
+//     if opcode, err := EncodeOpcode(OpHalt, 0, 0, 0); err != nil {
+//         t.Error("Invalid opcode conversion.")
+//     } else if opcode != 0 {
+//         t.Error("Halt instruction should give a 0 opcode.")
+//     }
+// }
