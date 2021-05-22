@@ -14,9 +14,13 @@ const RegisterCount = 16
 type Opcode uint16
 
 const (
-    OpHalt   Opcode = 0
-    OpNoop          = 1
-    OpSetReg        = 8
+    OpHalt   Opcode =  0
+    OpNoop          =  1
+    OpSetReg        =  8
+    OpLoad          =  9
+    OpStore         = 10
+    OpAddReg        = 11
+    OpSubReg        = 12
 )
 
 // ************************************************************************************************
@@ -110,12 +114,25 @@ type Bcpu struct {
     pc int
     memory [DefaultMemorySize]uint16
     register [RegisterCount]uint16
+    flags uint8
 }
 
 func NewBcpu() *Bcpu {
     cpu := new(Bcpu)
     cpu.pc = ProgramStart
     return cpu
+}
+
+func (cpu *Bcpu) setOverflow() {
+    cpu.flags |= 0b00000001
+}
+
+func (cpu *Bcpu) unsetOverflow() {
+    cpu.flags &= 0b11111110
+}
+
+func (cpu *Bcpu) GetOverflow() bool {
+    return cpu.flags & 0x00000001 == 1
 }
 
 func (cpu *Bcpu) MemorySize() int {
@@ -142,8 +159,16 @@ func (cpu *Bcpu) GetMemory(location uint16) (uint16, error) {
     }
 }
 
-func (cpu *Bcpu) GetRegister(reg int) (uint16, error) {
-    if reg < 0 || reg > RegisterCount - 1 {
+func (cpu *Bcpu) SetRegister(reg uint16, val uint16) error {
+    if reg > RegisterCount - 1 {
+        return fmt.Errorf("Bad register designation: %d.", reg)
+    }
+    cpu.register[reg] = val
+    return nil
+}
+
+func (cpu *Bcpu) GetRegister(reg uint16) (uint16, error) {
+    if reg > RegisterCount - 1 {
         return 0, fmt.Errorf("Bad register designation: %d.", reg)
     }
     return cpu.register[reg], nil
@@ -151,18 +176,43 @@ func (cpu *Bcpu) GetRegister(reg int) (uint16, error) {
 
 func (cpu *Bcpu) Run() error {
     cpu.pc = ProgramStart
-    for {
+    for keep_going := true; keep_going; {
         inst := DecodeInstruction(cpu.memory[cpu.pc])
         cpu.pc ++
-        if inst.opcode == OpHalt {
-            break
-        } else if inst.opcode == OpNoop {
+        switch inst.opcode {
+        case OpHalt:
+            keep_going = false
+        case OpNoop:
             /* do nothing */
-        } else if inst.opcode == OpSetReg {
+        case OpSetReg:
             param := cpu.memory[cpu.pc]
             cpu.pc ++
             cpu.register[inst.regtgt] = param
-        } else {
+        case OpLoad:
+            location := cpu.memory[cpu.pc]
+            cpu.pc ++
+            cpu.register[inst.regtgt] = cpu.memory[location]
+        case OpStore:
+            location := cpu.memory[cpu.pc]
+            cpu.pc ++
+            cpu.memory[location] = cpu.register[inst.regsrc]
+        case OpAddReg:
+            newval := int32(cpu.register[inst.regsrc]) + int32(cpu.register[inst.regtgt])
+            cpu.register[inst.regtgt] = uint16(newval)
+            if newval < 0 || newval > 65535 {
+                cpu.setOverflow()
+            } else {
+                cpu.unsetOverflow()
+            }
+        case OpSubReg:
+            newval := int32(cpu.register[inst.regsrc]) - int32(cpu.register[inst.regtgt])
+            cpu.register[inst.regtgt] = uint16(newval)
+            if newval < 0 || newval > 65535 {
+                cpu.setOverflow()
+            } else {
+                cpu.unsetOverflow()
+            }
+        default:
             return fmt.Errorf("Invalid opcode: %d (%b).", inst.opcode, inst.Encode())
         }
     }

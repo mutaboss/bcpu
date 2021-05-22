@@ -84,7 +84,7 @@ func TestBadOpcode(t *testing.T) {
     }
 }
 
-func testRegisterGet(cpu *Bcpu, reg int, expval uint16) bool {
+func testRegisterGet(cpu *Bcpu, reg uint16, expval uint16) bool {
     val, err := cpu.GetRegister(reg)
     if err != nil {
         return false
@@ -120,7 +120,7 @@ func testRegisterSet(t *testing.T, cpu *Bcpu, reg uint16, expval uint16) {
     if err := cpu.Run(); err != nil {
         t.Error(fmt.Sprintf("Execution error: %s", err))
     }
-    val, err := cpu.GetRegister(int(reg))
+    val, err := cpu.GetRegister(reg)
     if err != nil {
         t.Error(err)
     }
@@ -144,4 +144,66 @@ func TestBcpuOpSetreg(t *testing.T) {
     testRegisterSet(t, cpu, 0, 16)
     testRegisterSet(t, cpu, 1, 256)
     testRegisterSet(t, cpu, RegisterCount-1, 256)
+}
+
+func TestBcpuLoad(t *testing.T) {
+    cpu := NewBcpu()
+    cpu.SetMemory(ProgramStart, NewInstruction(OpLoad, 0, 1, 0).Encode())
+    cpu.SetMemory(ProgramStart+1, DefaultMemorySize-1)
+    cpu.SetMemory(DefaultMemorySize-1, 257)
+    if err := cpu.Run(); err != nil {
+        t.Error(err)
+    }
+    if val, err := cpu.GetRegister(1); err != nil {
+        t.Error(err)
+    } else if val != 257 {
+        t.Error(fmt.Sprintf("Register does not match expectation (257): %d.", val))
+    }
+}
+
+func TestBcpuStore(t *testing.T) {
+    cpu := NewBcpu()
+    cpu.SetMemory(ProgramStart, NewInstruction(OpStore, 1, 0, 0).Encode())
+    cpu.SetMemory(ProgramStart+1, DefaultMemorySize-1)
+    cpu.SetMemory(DefaultMemorySize-1, 3)
+    cpu.SetRegister(1, 257)
+    if err := cpu.Run(); err != nil {
+        t.Error(err)
+    }
+    if val, err := cpu.GetMemory(DefaultMemorySize-1); err != nil {
+        t.Error(err)
+    } else if val != 257 {
+        t.Error(fmt.Sprintf("Memory does not contain expected value (257): %d.", val))
+    }
+}
+
+func testMath(t *testing.T, cpu *Bcpu,
+    opcode Opcode, regsrc uint16, valsrc uint16,
+    regtgt uint16, valtgt uint16, expval uint16, expof bool) {
+    cpu.SetMemory(ProgramStart, NewInstruction(opcode, regsrc, regtgt, 0).Encode())
+    cpu.SetMemory(ProgramStart+1, 0)
+    cpu.SetRegister(regsrc, valsrc)
+    cpu.SetRegister(regtgt, valtgt)
+    if err := cpu.Run(); err != nil {
+        t.Error(err)
+    }
+    if val, err := cpu.GetRegister(regtgt); err != nil {
+        t.Error(err)
+    } else if val != expval {
+        t.Error(fmt.Sprintf("Math operation expected a result of %d, got %d.", expval, val))
+    }
+    if expof && !cpu.GetOverflow() {
+        t.Error("Expected overflow, but didn't find it.")
+    }
+    if !expof && cpu.GetOverflow() {
+        t.Error("Did not expect overflow, but we got it.")
+    }
+}
+
+func TestAddReg(t *testing.T) {
+    cpu := NewBcpu()
+    testMath(t, cpu, OpAddReg, 0,     5, 1, 10,    15, false)
+    testMath(t, cpu, OpSubReg, 2,    23, 3,  5,    18, false)
+    testMath(t, cpu, OpAddReg, 0, 65535, 1,  1,     0, true)
+    testMath(t, cpu, OpSubReg, 0,     0, 1,  1, 65535, true)
 }
