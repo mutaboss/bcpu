@@ -25,14 +25,52 @@ func TestBcpuRun(t *testing.T) {
     }
 }
 
+func TestBcpuMemory(t *testing.T) {
+    var cpu *Bcpu = NewBcpu()
+    if err := cpu.SetMemory(ProgramStart, 256); err != nil {
+        t.Error(err)
+    } else if checkMemory(cpu, ProgramStart, 256) != nil {
+        t.Error(err)
+    }
+    if err := cpu.SetMemory(DefaultMemorySize, 256); err == nil {
+        t.Error("Memory access beyond registered size.")
+    }
+    if _, err := cpu.GetMemory(DefaultMemorySize); err == nil {
+        t.Error("Memory access beyond registered size.")
+    }
+}
+
+func testInstructionHelper(t *testing.T, op Opcode, src uint16, tgt uint16, memloc uint16, exp uint16) {
+    inst := NewInstruction(op, src, tgt, memloc)
+    if inst.Encode() != exp {
+        t.Error(fmt.Sprintf("Expected (%d) = %b, was %b.", op, exp, inst.Encode()))
+    }
+    instd := DecodeInstruction(inst.Encode())
+    if instd.opcode != op {
+        t.Error(fmt.Sprintf("Invalid decoding, expected %d, got %d.", op, instd.opcode))
+    }
+    if instd.regsrc != src || instd.regtgt != tgt || instd.memloc != memloc {
+        t.Error(fmt.Sprintf("Parameters did not decode: %d/%d, %d/%d, %d/%d.",
+            src, instd.regsrc, tgt, instd.regtgt, memloc, instd.memloc))
+    }
+}
+
+func TestInstructions(t *testing.T) {
+    // Test that converting an instruction to an integer produces the correct bit pattern.
+    testInstructionHelper(t, OpHalt,   0, 0, 0, 0b0000000000000000)
+    testInstructionHelper(t, OpNoop,   0, 0, 0, 0b0001000000000000)
+    testInstructionHelper(t, OpSetReg, 0, 1, 0, 0b1000100000000001)
+}
+
 func TestBcpuNoop(t *testing.T) {
     var cpu *Bcpu = NewBcpu()
-    cpu.SetMemory(ProgramStart, OpNoop<<8)
-    cpu.SetMemory(ProgramStart+1, OpNoop<<8)
+    noop := NewInstruction(OpNoop,0,0,0).Encode()
+    cpu.SetMemory(ProgramStart, noop)
+    cpu.SetMemory(ProgramStart, noop)
     if err := cpu.Run(); err != nil {
         t.Error(fmt.Sprintf("Execution error: %s.", err))
     }
-    exppc := ProgramStart + 3
+    exppc := ProgramStart + 2
     if cpu.ProgramCounter() != exppc {
         t.Error(fmt.Sprintf("Program Counter should be %d, is %d.", exppc, cpu.ProgramCounter()))
     }
@@ -57,9 +95,28 @@ func testRegisterGet(cpu *Bcpu, reg int, expval uint16) bool {
     return true
 }
 
+func checkMemory(cpu *Bcpu, location uint16, expval uint16) error {
+    if val, err := cpu.GetMemory(location); err != nil {
+        return err
+    } else {
+        if val != expval {
+            return fmt.Errorf("Location %d should have a value of %d, has a value of %d.",
+                ProgramStart, expval, val)
+        }
+    }
+    return nil
+}
+
 func testRegisterSet(t *testing.T, cpu *Bcpu, reg uint16, expval uint16) {
-    cpu.SetMemory(ProgramStart, OpSetReg<<8 + reg)
+    sr := NewInstruction(OpSetReg,0,reg,0).Encode()
+    cpu.SetMemory(ProgramStart, sr)
+    if err := checkMemory(cpu, ProgramStart, sr); err != nil {
+        t.Error(err)
+    }
     cpu.SetMemory(ProgramStart+1, expval)
+    if err := checkMemory(cpu, ProgramStart+1, expval); err != nil {
+        t.Error(err)
+    }
     if err := cpu.Run(); err != nil {
         t.Error(fmt.Sprintf("Execution error: %s", err))
     }
@@ -88,11 +145,3 @@ func TestBcpuOpSetreg(t *testing.T) {
     testRegisterSet(t, cpu, 1, 256)
     testRegisterSet(t, cpu, RegisterCount-1, 256)
 }
-
-// func TestBcpuEncodeOpcode(t *testing.T) {
-//     if opcode, err := EncodeOpcode(OpHalt, 0, 0, 0); err != nil {
-//         t.Error("Invalid opcode conversion.")
-//     } else if opcode != 0 {
-//         t.Error("Halt instruction should give a 0 opcode.")
-//     }
-// }
