@@ -4,9 +4,9 @@ import (
     "fmt"
 )
 
-const DefaultMemorySize = 4096
-const ProgramStart = 256
-const RegisterCount = 16
+const DefaultMemorySize uint16 = 4096
+const ProgramStart uint16 = 256
+const RegisterCount uint16 = 16
 
 // ************************************************************************************************
 // Opcodes
@@ -16,11 +16,18 @@ type Opcode uint16
 const (
     OpHalt   Opcode =  0
     OpNoop          =  1
+    OpJmp           =  2
+    OpJeq           =  3
+    OpJgt           =  4
+    OpJlt           =  5
     OpSetReg        =  8
     OpLoad          =  9
     OpStore         = 10
     OpAddReg        = 11
     OpSubReg        = 12
+    OpMulReg        = 13
+    OpDivReg        = 14
+    OpCmp           = 15
 )
 
 // ************************************************************************************************
@@ -111,7 +118,7 @@ func DecodeOpcode(instruction uint16) (Opcode, uint16, uint16, uint16, error) {
 // Bcpu: The Machine.
 
 type Bcpu struct {
-    pc int
+    pc uint16
     memory [DefaultMemorySize]uint16
     register [RegisterCount]uint16
     flags uint8
@@ -132,14 +139,40 @@ func (cpu *Bcpu) unsetOverflow() {
 }
 
 func (cpu *Bcpu) GetOverflow() bool {
-    return cpu.flags & 0x00000001 == 1
+    return cpu.flags & 0b00000001 == 1
 }
 
-func (cpu *Bcpu) MemorySize() int {
-    return len(cpu.memory)
+func (cpu *Bcpu) setEqual() {
+    cpu.flags &= 0b11111001
 }
 
-func (cpu *Bcpu) ProgramCounter() int {
+func (cpu *Bcpu) setGreater() {
+    cpu.setEqual()
+    cpu.flags |= 0b11111101
+}
+
+func (cpu *Bcpu) setLesser() {
+    cpu.setEqual()
+    cpu.flags |= 0b11111011
+}
+
+func (cpu *Bcpu) GetEqual() bool {
+    return cpu.flags & 0b00000110 == 0
+}
+
+func (cpu *Bcpu) GetGreater() bool {
+    return cpu.flags & 0b00000100 > 0
+}
+
+func (cpu *Bcpu) GetLesser() bool {
+    return cpu.flags & 0b00000010 > 0
+}
+
+func (cpu *Bcpu) MemorySize() uint16 {
+    return uint16(len(cpu.memory))
+}
+
+func (cpu *Bcpu) ProgramCounter() uint16 {
     return cpu.pc
 }
 
@@ -211,6 +244,45 @@ func (cpu *Bcpu) Run() error {
                 cpu.setOverflow()
             } else {
                 cpu.unsetOverflow()
+            }
+        case OpMulReg:
+            newval := int32(cpu.register[inst.regsrc]) * int32(cpu.register[inst.regtgt])
+            cpu.register[inst.regtgt] = uint16(newval)
+            if newval < 0 || newval > 65535 {
+                cpu.setOverflow()
+            } else {
+                cpu.unsetOverflow()
+            }
+        case OpDivReg:
+            newval := int32(cpu.register[inst.regsrc]) / int32(cpu.register[inst.regtgt])
+            cpu.register[inst.regtgt] = uint16(newval)
+            if newval < 0 || newval > 65535 {
+                cpu.setOverflow()
+            } else {
+                cpu.unsetOverflow()
+            }
+        case OpJmp:
+            cpu.pc = inst.memloc
+        case OpCmp:
+            a, b := cpu.register[inst.regsrc], cpu.register[inst.regtgt]
+            if a == b {
+                cpu.setEqual()
+            } else if a > b {
+                cpu.setGreater()
+            } else {
+                cpu.setLesser()
+            }
+        case OpJeq:
+            if cpu.GetEqual() {
+                cpu.pc = inst.memloc
+            }
+        case OpJgt:
+            if cpu.GetGreater() {
+                cpu.pc = inst.memloc
+            }
+        case OpJlt:
+            if cpu.GetLesser() {
+                cpu.pc = inst.memloc
             }
         default:
             return fmt.Errorf("Invalid opcode: %d (%b).", inst.opcode, inst.Encode())

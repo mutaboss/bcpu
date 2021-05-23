@@ -177,17 +177,15 @@ func TestBcpuStore(t *testing.T) {
     }
 }
 
-func testMath(t *testing.T, cpu *Bcpu,
-    opcode Opcode, regsrc uint16, valsrc uint16,
-    regtgt uint16, valtgt uint16, expval uint16, expof bool) {
-    cpu.SetMemory(ProgramStart, NewInstruction(opcode, regsrc, regtgt, 0).Encode())
-    cpu.SetMemory(ProgramStart+1, 0)
-    cpu.SetRegister(regsrc, valsrc)
-    cpu.SetRegister(regtgt, valtgt)
+func testMath(t *testing.T, cpu *Bcpu, opcode Opcode, valA uint16, valB uint16, expval uint16, expof bool) {
+    cpu.SetMemory(ProgramStart, NewInstruction(opcode, 0, 1, 0).Encode())
+    cpu.SetMemory(ProgramStart+1, 0) // Ensure it is OpHalt
+    cpu.SetRegister(0, valA)
+    cpu.SetRegister(1, valB)
     if err := cpu.Run(); err != nil {
         t.Error(err)
     }
-    if val, err := cpu.GetRegister(regtgt); err != nil {
+    if val, err := cpu.GetRegister(1); err != nil {
         t.Error(err)
     } else if val != expval {
         t.Error(fmt.Sprintf("Math operation expected a result of %d, got %d.", expval, val))
@@ -202,8 +200,79 @@ func testMath(t *testing.T, cpu *Bcpu,
 
 func TestAddReg(t *testing.T) {
     cpu := NewBcpu()
-    testMath(t, cpu, OpAddReg, 0,     5, 1, 10,    15, false)
-    testMath(t, cpu, OpSubReg, 2,    23, 3,  5,    18, false)
-    testMath(t, cpu, OpAddReg, 0, 65535, 1,  1,     0, true)
-    testMath(t, cpu, OpSubReg, 0,     0, 1,  1, 65535, true)
+    testMath(t, cpu, OpAddReg,     5, 10,    15, false)
+    testMath(t, cpu, OpSubReg,    23,  5,    18, false)
+    testMath(t, cpu, OpAddReg, 65535,  1,     0, true)
+    testMath(t, cpu, OpSubReg,     0,  1, 65535, true)
+    testMath(t, cpu, OpMulReg,     5, 15,    75, false)
+    testMath(t, cpu, OpMulReg, 32768,  3, 32768, true)
+    testMath(t, cpu, OpDivReg,    15,  5,     3, false)
+    testMath(t, cpu, OpDivReg,     5, 15,     0, false)
+}
+
+func testComparison(cpu *Bcpu, valA uint16, valB uint16, exp int) bool {
+    cpu.SetMemory(ProgramStart, NewInstruction(OpSetReg, 0, 0, 0).Encode())
+    cpu.SetMemory(ProgramStart+1, valA)
+    cpu.SetMemory(ProgramStart+2, NewInstruction(OpSetReg, 0, 1, 0).Encode())
+    cpu.SetMemory(ProgramStart+3, valB)
+    cpu.SetMemory(ProgramStart+4, NewInstruction(OpCmp, 0, 1, 0).Encode())
+    cpu.Run()
+    if valA == valB {
+        return exp == 0 && cpu.GetEqual()
+    } else if valA > valB {
+        return exp > 0 && cpu.GetGreater()
+    } else {
+        return exp < 0 && cpu.GetLesser()
+    }
+}
+
+func TestComparison(t *testing.T) {
+    cpu := NewBcpu()
+    if !testComparison(cpu, 16, 16, 0) {
+        t.Error(fmt.Sprintf("16 = 16 %t %t %t", cpu.GetEqual(), cpu.GetGreater(), cpu.GetLesser()))
+    }
+    if !testComparison(cpu, 16, 32, -1) {
+        t.Error(fmt.Sprintf("16 < 32 =%t >%t <%t", cpu.GetEqual(), cpu.GetGreater(), cpu.GetLesser()))
+    }
+    if !testComparison(cpu, 32, 16, 1) {
+        t.Error(fmt.Sprintf("32 > 16 =%t >%t <%t", cpu.GetEqual(), cpu.GetGreater(), cpu.GetLesser()))
+    }
+}
+
+func TestJump(t *testing.T) {
+    cpu := NewBcpu()
+    cpu.SetMemory(ProgramStart, NewInstruction(OpJmp, 0, 0, 2048).Encode())
+    cpu.Run()
+    // PC=2049: We advance once for the OpHalt at 2048.
+    if cpu.ProgramCounter() != 2049 {
+        t.Error(fmt.Sprintf("JMP 2048, but pc=%d", cpu.ProgramCounter()))
+    }
+}
+
+func setupBranch(cpu *Bcpu, valA uint16, valB uint16, op Opcode, dest uint16) error {
+    cpu.SetMemory(ProgramStart, NewInstruction(OpSetReg, 0, 0, 0).Encode())
+    cpu.SetMemory(ProgramStart+1, valA)
+    cpu.SetMemory(ProgramStart+2, NewInstruction(OpSetReg, 0, 1, 0).Encode())
+    cpu.SetMemory(ProgramStart+3, valB)
+    cpu.SetMemory(ProgramStart+4, NewInstruction(OpCmp, 0, 1, 0).Encode())
+    cpu.SetMemory(ProgramStart+5, NewInstruction(op, 0, 0, dest).Encode())
+    cpu.Run()
+    if cpu.ProgramCounter() != dest + 1 {
+        return fmt.Errorf("%#v %d left us at %d",op, dest, cpu.ProgramCounter())
+    } else {
+        return nil
+    }
+}
+
+func TestBranch(t *testing.T) {
+    cpu := NewBcpu()
+    if err := setupBranch(cpu, 16, 16, OpJeq, 2048); err != nil {
+        t.Error(err)
+    }
+    if err := setupBranch(cpu, 32, 16, OpJgt, 2048); err != nil {
+        t.Error(err)
+    }
+    if err := setupBranch(cpu, 16, 32, OpJlt, 2048); err != nil {
+        t.Error(err)
+    }
 }
