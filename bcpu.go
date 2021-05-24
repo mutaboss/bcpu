@@ -28,7 +28,18 @@ const (
 	OpMulReg        = 13
 	OpDivReg        = 14
 	OpCmp           = 15
+    OpAnd           = 16
+    OpOr            = 17
+    OpXor           = 18
+    OpShl           = 19
+    OpShr           = 20
+    OpNot           = 21
 )
+
+/*
+ * TODO:
+ * Shift left/Shift right
+ */
 
 // ************************************************************************************************
 // Instructions
@@ -284,6 +295,18 @@ func (cpu *Bcpu) Run() error {
 			if cpu.GetLesser() {
 				cpu.pc = inst.memloc
 			}
+        case OpShl:
+            cpu.register[inst.regtgt] = cpu.register[inst.regtgt] << inst.regsrc
+        case OpShr:
+            cpu.register[inst.regtgt] = cpu.register[inst.regtgt] >> inst.regsrc
+        case OpAnd:
+            cpu.register[inst.regtgt] = cpu.register[inst.regsrc] & cpu.register[inst.regtgt]
+        case OpOr:
+            cpu.register[inst.regtgt] = cpu.register[inst.regsrc] | cpu.register[inst.regtgt]
+        case OpXor:
+            cpu.register[inst.regtgt] = cpu.register[inst.regsrc] ^ cpu.register[inst.regtgt]
+        case OpNot:
+            cpu.register[inst.regtgt] = ^ cpu.register[inst.regtgt]
 		default:
 			return fmt.Errorf("Invalid opcode: %d (%b).", inst.opcode, inst.Encode())
 		}

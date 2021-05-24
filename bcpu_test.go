@@ -208,6 +208,10 @@ func TestAddReg(t *testing.T) {
 	testMath(t, cpu, OpMulReg, 32768, 3, 32768, true)
 	testMath(t, cpu, OpDivReg, 15, 5, 3, false)
 	testMath(t, cpu, OpDivReg, 5, 15, 0, false)
+    testMath(t, cpu, OpAnd,    1,  3, 1, false)
+    testMath(t, cpu, OpOr,     1,  2, 3, false)
+    testMath(t, cpu, OpXor,    3,  1, 2, false)
+    testMath(t, cpu, OpNot,    0,  7, 65528, false)
 }
 
 func testComparison(cpu *Bcpu, valA uint16, valB uint16, exp int) bool {
@@ -275,4 +279,26 @@ func TestBranch(t *testing.T) {
 	if err := setupBranch(cpu, 16, 32, OpJlt, 2048); err != nil {
 		t.Error(err)
 	}
+}
+
+func TestShift(t *testing.T) {
+    cpu := NewBcpu()
+    // Shl
+    cpu.SetMemory(ProgramStart, NewInstruction(OpShl, 1, 0, 0).Encode())
+    cpu.SetRegister(0, 1)
+    cpu.Run()
+    if val, err := cpu.GetRegister(0); err != nil {
+        t.Error(err)
+    } else if val != 2 {
+        t.Error(fmt.Sprintf("Expected 1 << 1 == 2, but found %d.", val))
+    }
+    // Shr
+    cpu.SetMemory(ProgramStart, NewInstruction(OpShr, 1, 0, 0).Encode())
+    cpu.SetRegister(0, 2)
+    cpu.Run()
+    if val, err := cpu.GetRegister(0); err != nil {
+        t.Error(err)
+    } else if val != 1 {
+        t.Error(fmt.Sprintf("Expected 2 >> 1 == 1, but found %d.", val))
+    }
 }
