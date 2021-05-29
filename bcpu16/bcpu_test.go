@@ -1,4 +1,4 @@
-package main
+package bcpu16
 
 import (
 	"fmt"
