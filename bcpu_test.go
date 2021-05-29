@@ -59,7 +59,7 @@ func TestInstructions(t *testing.T) {
 	// Test that converting an instruction to an integer produces the correct bit pattern.
 	testInstructionHelper(t, OpHalt, 0, 0, 0, 0b0000000000000000)
 	testInstructionHelper(t, OpNoop, 0, 0, 0, 0b0001000000000000)
-	testInstructionHelper(t, OpSetReg, 0, 1, 0, 0b1000100000000001)
+	testInstructionHelper(t, OpSetReg, 0, 1, 0, 0b1000001000000001)
 }
 
 func TestBcpuNoop(t *testing.T) {
@@ -215,11 +215,12 @@ func TestAddReg(t *testing.T) {
 }
 
 func testComparison(cpu *Bcpu, valA uint16, valB uint16, exp int) bool {
-	cpu.SetMemory(ProgramStart, NewInstruction(OpSetReg, 0, 0, 0).Encode())
-	cpu.SetMemory(ProgramStart+1, valA)
-	cpu.SetMemory(ProgramStart+2, NewInstruction(OpSetReg, 0, 1, 0).Encode())
-	cpu.SetMemory(ProgramStart+3, valB)
-	cpu.SetMemory(ProgramStart+4, NewInstruction(OpCmp, 0, 1, 0).Encode())
+    cpu.Load(ProgramStart, []uint16{
+        NewInstruction(OpSetReg, 0, 0, 0).Encode(),
+        valA,
+        NewInstruction(OpSetReg, 0, 1, 0).Encode(),
+        valB,
+        NewInstruction(OpCmp, 0, 1, 0).Encode()})
 	cpu.Run()
 	if valA == valB {
 		return exp == 0 && cpu.GetEqual()
@@ -254,13 +255,14 @@ func TestJump(t *testing.T) {
 }
 
 func setupBranch(cpu *Bcpu, valA uint16, valB uint16, op Opcode, dest uint16) error {
-	cpu.SetMemory(ProgramStart, NewInstruction(OpSetReg, 0, 0, 0).Encode())
-	cpu.SetMemory(ProgramStart+1, valA)
-	cpu.SetMemory(ProgramStart+2, NewInstruction(OpSetReg, 0, 1, 0).Encode())
-	cpu.SetMemory(ProgramStart+3, valB)
-	cpu.SetMemory(ProgramStart+4, NewInstruction(OpCmp, 0, 1, 0).Encode())
-	cpu.SetMemory(ProgramStart+5, NewInstruction(op, 0, 0, dest).Encode())
-	cpu.Run()
+    cpu.Load(ProgramStart, []uint16{
+        NewInstruction(OpSetReg, 0, 0, 0).Encode(),
+        valA,
+        NewInstruction(OpSetReg, 0, 1, 0).Encode(),
+        valB,
+        NewInstruction(OpCmp, 0, 1, 0).Encode(),
+        NewInstruction(op, 0, 0, dest).Encode()})
+    cpu.Run()
 	if cpu.ProgramCounter() != dest+1 {
 		return fmt.Errorf("%#v %d left us at %d", op, dest, cpu.ProgramCounter())
 	} else {
